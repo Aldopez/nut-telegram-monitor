@@ -47,6 +47,11 @@ assert_mode "$TEST_DIR/etc/systemd/system/ups-status-report.service" 644
 assert_mode "$TEST_DIR/etc/nut/telegram.conf" 640
 
 cmp \
+    "$REPO_DIR/config/telegram.conf.example" \
+    "$TEST_DIR/etc/nut/telegram.conf" >/dev/null ||
+    fail "la configuración inicial no coincide con la plantilla"
+
+cmp \
     "$REPO_DIR/bin/notificar-ups-telegram" \
     "$TEST_DIR/usr/local/bin/notificar-ups-telegram" >/dev/null ||
     fail "el notificador instalado no coincide con el original"

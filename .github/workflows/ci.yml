@@ -54,6 +54,14 @@ jobs:
       - name: Test isolated uninstallation
         run: tests/test-uninstall
 
+      - name: Check trailing whitespace
+        run: |
+          if git grep -nI -E '[[:blank:]]+$'
+          then
+            echo "Trailing whitespace was found." >&2
+            exit 1
+          fi
+
       - name: Check for Telegram bot tokens
         run: |
           if grep -RInE \

@@ -1,8 +1,8 @@
 # Telegram bot token obtained from @BotFather.
-BOT_TOKEN="replace-with-your-bot-token"
+BOT_TOKEN=""
 
 # Telegram destination: user, group or channel ID.
-CHAT_ID="replace-with-your-chat-id"
+CHAT_ID=""
 
 # Optional label shown in notifications.
 # If empty, the system hostname is used.

@@ -82,7 +82,6 @@ if [ -z "$DESTDIR" ]; then
         [ -d /run/systemd/system ]
     then
         systemctl daemon-reload
-        systemctl reset-failed >/dev/null 2>&1 || true
     fi
 fi
 
