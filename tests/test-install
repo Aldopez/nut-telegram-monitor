@@ -1,0 +1,63 @@
+#!/bin/sh
+
+set -eu
+
+REPO_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+TEST_DIR=$(mktemp -d)
+
+cleanup() {
+    rm -rf "$TEST_DIR"
+}
+
+trap cleanup EXIT HUP INT TERM
+
+fail() {
+    printf 'FAIL: %s\n' "$1" >&2
+    exit 1
+}
+
+assert_file() {
+    [ -f "$1" ] || fail "falta el archivo $1"
+}
+
+assert_mode() {
+    actual=$(stat -c '%a' "$1")
+    expected=$2
+
+    [ "$actual" = "$expected" ] ||
+        fail "modo de $1: esperado $expected, obtenido $actual"
+}
+
+DESTDIR="$TEST_DIR" "$REPO_DIR/install.sh" >/dev/null
+
+assert_file "$TEST_DIR/usr/local/bin/notificar-ups-telegram"
+assert_file "$TEST_DIR/usr/local/bin/registrar-estado-ups"
+assert_file "$TEST_DIR/usr/local/bin/eventos-ups"
+
+assert_file "$TEST_DIR/etc/systemd/system/ups-startup-notify.service"
+assert_file "$TEST_DIR/etc/systemd/system/ups-status-report.service"
+assert_file "$TEST_DIR/etc/systemd/system/ups-status-report.timer"
+
+assert_file "$TEST_DIR/etc/nut/telegram.conf"
+assert_file \
+    "$TEST_DIR/usr/local/share/doc/nut-telegram-monitor/upsmon.conf.snippet"
+
+assert_mode "$TEST_DIR/usr/local/bin/notificar-ups-telegram" 755
+assert_mode "$TEST_DIR/etc/systemd/system/ups-status-report.service" 644
+assert_mode "$TEST_DIR/etc/nut/telegram.conf" 640
+
+cmp \
+    "$REPO_DIR/bin/notificar-ups-telegram" \
+    "$TEST_DIR/usr/local/bin/notificar-ups-telegram" >/dev/null ||
+    fail "el notificador instalado no coincide con el original"
+
+printf '%s\n' 'configuration-preserved' \
+    >"$TEST_DIR/etc/nut/telegram.conf"
+
+DESTDIR="$TEST_DIR" "$REPO_DIR/install.sh" >/dev/null
+
+grep -Fx 'configuration-preserved' \
+    "$TEST_DIR/etc/nut/telegram.conf" >/dev/null ||
+    fail "el instalador sobrescribió una configuración existente"
+
+printf 'ok - instalación aislada y preservación de configuración\n'

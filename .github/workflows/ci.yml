@@ -28,17 +28,24 @@ jobs:
           sh -n bin/registrar-estado-ups
           sh -n tests/run-tests
           sh -n config/telegram.conf.example
+          sh -n install.sh
+          sh -n tests/test-install
 
       - name: Run ShellCheck
         run: |
           shellcheck \
+            install.sh \
             bin/eventos-ups \
             bin/notificar-ups-telegram \
             bin/registrar-estado-ups \
-            tests/run-tests
+            tests/run-tests \
+            tests/test-install
 
       - name: Run simulated tests
         run: tests/run-tests
+
+      - name: Test isolated installation
+        run: tests/test-install
 
       - name: Check for Telegram bot tokens
         run: |
