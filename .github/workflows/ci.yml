@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nut-server shellcheck
+
+      - name: Validate shell syntax
+        run: |
+          sh -n bin/eventos-ups
+          sh -n bin/notificar-ups-telegram
+          sh -n bin/registrar-estado-ups
+          sh -n tests/run-tests
+          sh -n config/telegram.conf.example
+
+      - name: Run ShellCheck
+        run: |
+          shellcheck \
+            bin/eventos-ups \
+            bin/notificar-ups-telegram \
+            bin/registrar-estado-ups \
+            tests/run-tests
+
+      - name: Run simulated tests
+        run: tests/run-tests
+
+      - name: Check for Telegram bot tokens
+        run: |
+          if grep -RInE \
+            --exclude-dir=.git \
+            '[0-9]{6,12}:[A-Za-z0-9_-]{30,}' \
+            .
+          then
+            echo "A possible Telegram bot token was found." >&2
+            exit 1
+          fi
+
+      - name: Stage executables for unit validation
+        run: |
+          sudo install -m 755 \
+            bin/notificar-ups-telegram \
+            /usr/local/bin/notificar-ups-telegram
+
+          sudo install -m 755 \
+            bin/registrar-estado-ups \
+            /usr/local/bin/registrar-estado-ups
+
+      - name: Validate systemd units
+        run: |
+          systemd-analyze verify \
+            "$PWD/systemd/ups-startup-notify.service" \
+            "$PWD/systemd/ups-status-report.service" \
+            "$PWD/systemd/ups-status-report.timer"
