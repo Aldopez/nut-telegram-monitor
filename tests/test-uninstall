@@ -1,0 +1,48 @@
+#!/bin/sh
+
+set -eu
+
+REPO_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+TEST_DIR=$(mktemp -d)
+
+cleanup() {
+    rm -rf "$TEST_DIR"
+}
+
+trap cleanup EXIT HUP INT TERM
+
+fail() {
+    printf 'FAIL: %s\n' "$1" >&2
+    exit 1
+}
+
+assert_absent() {
+    [ ! -e "$1" ] || fail "no se eliminó $1"
+}
+
+DESTDIR="$TEST_DIR" "$REPO_DIR/install.sh" >/dev/null
+
+printf '%s\n' 'configuration-preserved' \
+    >"$TEST_DIR/etc/nut/telegram.conf"
+
+DESTDIR="$TEST_DIR" "$REPO_DIR/uninstall.sh" >/dev/null
+
+grep -Fx 'configuration-preserved' \
+    "$TEST_DIR/etc/nut/telegram.conf" >/dev/null ||
+    fail "la desinstalación eliminó o modificó la configuración"
+
+assert_absent "$TEST_DIR/usr/local/bin/notificar-ups-telegram"
+assert_absent "$TEST_DIR/usr/local/bin/registrar-estado-ups"
+assert_absent "$TEST_DIR/usr/local/bin/eventos-ups"
+assert_absent "$TEST_DIR/etc/systemd/system/ups-startup-notify.service"
+assert_absent "$TEST_DIR/etc/systemd/system/ups-status-report.service"
+assert_absent "$TEST_DIR/etc/systemd/system/ups-status-report.timer"
+assert_absent "$TEST_DIR/usr/local/share/doc/nut-telegram-monitor"
+
+REMOVE_CONFIG=1 \
+DESTDIR="$TEST_DIR" \
+    "$REPO_DIR/uninstall.sh" >/dev/null
+
+assert_absent "$TEST_DIR/etc/nut/telegram.conf"
+
+printf 'ok - desinstalación aislada y política de configuración\n'

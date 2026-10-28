@@ -41,7 +41,9 @@ upsc NOMBRE_UPS@HOST
 | `ups-startup-notify.service` | Informa el arranque y reintenta si no hay conectividad |
 | `ups-status-report.timer` | Ejecuta el registro periódico |
 | `upsmon.conf.snippet` | Directivas que deben integrarse manualmente en `upsmon.conf` |
-| `install.sh` | Instala los archivos sin habilitar servicios ni reemplazar configuraciones existentes |
+| `install.sh` | Instala los archivos sin habilitar servicios ni reemplazar configuraciones
+existentes |
+| `uninstall.sh` | Retira los archivos y preserva la configuración de forma predeterminada |
 
 ## Instalación
 
@@ -174,6 +176,14 @@ También puede indicarse otra cantidad de días:
 sudo eventos-ups 7
 ```
 
+## Desinstalación
+
+Primero eliminá de `/etc/nut/upsmon.conf` las directivas incorporadas desde
+`upsmon.conf.snippet` y reiniciá el monitor:
+
+```bash
+sudo systemctl restart nut-monitor.service
+
 ## Seguridad
 
 El token del bot y el identificador del chat se guardan en
@@ -197,8 +207,8 @@ find "$STAGE_DIR" -type f -print
 Validación sintáctica y estática:
 
 ```bash
-sh -n install.sh bin/* tests/*
-shellcheck install.sh bin/* tests/*
+sh -n install.sh uninstall.sh bin/* tests/*
+shellcheck install.sh uninstall.sh bin/* tests/*
 ```
 
 Pruebas simuladas, sin UPS ni acceso a Telegram:
@@ -206,6 +216,7 @@ Pruebas simuladas, sin UPS ni acceso a Telegram:
 ```bash
 tests/run-tests
 tests/test-install
+tests/test-uninstall
 ```
 
 GitHub Actions ejecuta estas verificaciones en cada `push` y pull request.

@@ -30,6 +30,8 @@ jobs:
           sh -n config/telegram.conf.example
           sh -n install.sh
           sh -n tests/test-install
+          sh -n uninstall.sh
+          sh -n tests/test-uninstall
 
       - name: Run ShellCheck
         run: |
@@ -39,13 +41,18 @@ jobs:
             bin/notificar-ups-telegram \
             bin/registrar-estado-ups \
             tests/run-tests \
-            tests/test-install
+            tests/test-install \
+            uninstall.sh \
+            tests/test-uninstall
 
       - name: Run simulated tests
         run: tests/run-tests
 
       - name: Test isolated installation
         run: tests/test-install
+
+      - name: Test isolated uninstallation
+        run: tests/test-uninstall
 
       - name: Check for Telegram bot tokens
         run: |
