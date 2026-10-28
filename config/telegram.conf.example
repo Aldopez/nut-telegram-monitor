@@ -1,0 +1,19 @@
+# Telegram bot token obtained from @BotFather.
+BOT_TOKEN="replace-with-your-bot-token"
+
+# Telegram destination: user, group or channel ID.
+CHAT_ID="replace-with-your-chat-id"
+
+# Optional label shown in notifications.
+# If empty, the system hostname is used.
+NOMBRE_EQUIPO=""
+
+# NUT UPS identifier accepted by upsc.
+UPS_TARGET="ups@127.0.0.1"
+
+# Optional friendly UPS name shown in periodic notifications.
+# If empty, UPS_TARGET is shown.
+NOMBRE_UPS=""
+
+# Seconds between detailed reports while the UPS remains on battery.
+INTERVALO_AVISO=600

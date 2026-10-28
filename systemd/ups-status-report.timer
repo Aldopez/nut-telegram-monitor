@@ -1,0 +1,10 @@
+[Unit]
+Description=Record UPS status every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+Unit=ups-status-report.service
+
+[Install]
+WantedBy=timers.target

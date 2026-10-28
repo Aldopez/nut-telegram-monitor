@@ -1,0 +1,20 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.secret
+*.local
+config/telegram.conf
+config/*.conf.local
+private/
+source/
+
+# Editor and temporary files
+*.bak
+*.swp
+*~
+.vscode/
+
+# Test and coverage output
+coverage/
+tmp/

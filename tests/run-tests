@@ -1,0 +1,136 @@
+#!/bin/sh
+
+set -eu
+
+REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+TEST_DIR=$(mktemp -d)
+
+cleanup() {
+    rm -rf "$TEST_DIR"
+}
+
+trap cleanup EXIT HUP INT TERM
+
+fail() {
+    printf 'FAIL: %s\n' "$1" >&2
+    exit 1
+}
+
+assert_contains() {
+    file=$1
+    text=$2
+
+    grep -F -- "$text" "$file" >/dev/null ||
+        fail "$file no contiene: $text"
+}
+
+cat >"$TEST_DIR/telegram.conf" <<'EOF'
+BOT_TOKEN="test-token"
+CHAT_ID="-1000000000000"
+NOMBRE_EQUIPO="Servidor de prueba"
+UPS_TARGET="demo@127.0.0.1"
+NOMBRE_UPS="UPS de prueba"
+INTERVALO_AVISO=0
+EOF
+
+cat >"$TEST_DIR/fake-logger" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"${LOGGER_CAPTURE:?}"
+EOF
+
+cat >"$TEST_DIR/fake-curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" >"${CURL_CAPTURE:?}"
+EOF
+
+cat >"$TEST_DIR/fake-upsc" <<'EOF'
+#!/bin/sh
+
+[ "$1" = "demo@127.0.0.1" ] || exit 9
+
+printf '%s\n' \
+    "ups.status: ${FAKE_UPS_STATUS:-OB}" \
+    "battery.charge: 87" \
+    "battery.runtime: 3600" \
+    "ups.load: 12"
+EOF
+
+cat >"$TEST_DIR/fake-notifier" <<'EOF'
+#!/bin/sh
+
+{
+    printf 'NOTIFYTYPE=%s\n' "${NOTIFYTYPE:-}"
+    printf 'UPSNAME=%s\n' "${UPSNAME:-}"
+    printf 'MESSAGE=%s\n' "${1:-}"
+} >"${NOTIFY_CAPTURE:?}"
+EOF
+
+chmod 755 \
+    "$TEST_DIR/fake-logger" \
+    "$TEST_DIR/fake-curl" \
+    "$TEST_DIR/fake-upsc" \
+    "$TEST_DIR/fake-notifier"
+
+CURL_CAPTURE="$TEST_DIR/curl.args"
+LOGGER_CAPTURE="$TEST_DIR/logger.out"
+NOTIFY_CAPTURE="$TEST_DIR/notifier.out"
+
+export CURL_CAPTURE LOGGER_CAPTURE NOTIFY_CAPTURE
+
+NUT_TELEGRAM_CONFIG="$TEST_DIR/telegram.conf" \
+NUT_TELEGRAM_CURL="$TEST_DIR/fake-curl" \
+NUT_TELEGRAM_LOGGER="$TEST_DIR/fake-logger" \
+NOTIFYTYPE=ONBATT \
+UPSNAME="UPS de prueba" \
+    "$REPO_DIR/bin/notificar-ups-telegram"
+
+assert_contains "$CURL_CAPTURE" "chat_id=-1000000000000"
+assert_contains "$CURL_CAPTURE" "Corte de energía"
+assert_contains "$CURL_CAPTURE" \
+    "https://api.telegram.org/bottest-token/sendMessage"
+
+printf 'ok - notificación de evento\n'
+
+NUT_TELEGRAM_CONFIG="$TEST_DIR/telegram.conf" \
+NUT_TELEGRAM_NOTIFIER="$TEST_DIR/fake-notifier" \
+NUT_TELEGRAM_STATE_FILE="$TEST_DIR/battery-last" \
+NUT_TELEGRAM_UPSC="$TEST_DIR/fake-upsc" \
+NUT_TELEGRAM_LOGGER="$TEST_DIR/fake-logger" \
+    "$REPO_DIR/bin/registrar-estado-ups"
+
+assert_contains "$NOTIFY_CAPTURE" "NOTIFYTYPE=BATTERY"
+assert_contains "$NOTIFY_CAPTURE" "UPSNAME=UPS de prueba"
+assert_contains "$NOTIFY_CAPTURE" "Batería: 87 %"
+assert_contains "$NOTIFY_CAPTURE" "Autonomía estimada: 1 h 0 min"
+
+[ -f "$TEST_DIR/battery-last" ] ||
+    fail "no se creó el archivo de control del último aviso"
+
+printf 'ok - informe periódico en batería\n'
+
+FAKE_UPS_STATUS=OL \
+NUT_TELEGRAM_CONFIG="$TEST_DIR/telegram.conf" \
+NUT_TELEGRAM_NOTIFIER="$TEST_DIR/fake-notifier" \
+NUT_TELEGRAM_STATE_FILE="$TEST_DIR/battery-last" \
+NUT_TELEGRAM_UPSC="$TEST_DIR/fake-upsc" \
+NUT_TELEGRAM_LOGGER="$TEST_DIR/fake-logger" \
+    "$REPO_DIR/bin/registrar-estado-ups"
+
+[ ! -e "$TEST_DIR/battery-last" ] ||
+    fail "el estado temporal no se eliminó al volver a línea"
+
+printf 'ok - limpieza al volver a alimentación de red\n'
+
+FAKE_UPS_STATUS=OL \
+NUT_TELEGRAM_CONFIG="$TEST_DIR/telegram.conf" \
+NUT_TELEGRAM_NOTIFIER="$TEST_DIR/fake-notifier" \
+NUT_TELEGRAM_STATE_FILE="$TEST_DIR/battery-last" \
+NUT_TELEGRAM_UPSC="$TEST_DIR/fake-upsc" \
+NUT_TELEGRAM_LOGGER="$TEST_DIR/fake-logger" \
+    "$REPO_DIR/bin/registrar-estado-ups" startup
+
+assert_contains "$NOTIFY_CAPTURE" "NOTIFYTYPE=STARTUP"
+assert_contains "$NOTIFY_CAPTURE" "El equipo se inició correctamente"
+
+printf 'ok - notificación de arranque\n'
+printf 'Todas las pruebas finalizaron correctamente.\n'

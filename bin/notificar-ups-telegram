@@ -1,0 +1,88 @@
+#!/bin/sh
+
+CONFIG="${NUT_TELEGRAM_CONFIG:-/etc/nut/telegram.conf}"
+CURL="${NUT_TELEGRAM_CURL:-/usr/bin/curl}"
+LOGGER="${NUT_TELEGRAM_LOGGER:-/usr/bin/logger}"
+
+if [ ! -r "$CONFIG" ]; then
+    "$LOGGER" -t nut-telegram "No se puede leer el archivo de configuración: $CONFIG"
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+. "$CONFIG"
+
+DESTINO="${CHAT_ID_OVERRIDE:-${CHAT_ID:-}}"
+EQUIPO="${NOMBRE_EQUIPO:-$(hostname -s)}"
+UPS="${UPSNAME:-UPS desconocida}"
+
+if [ -z "${BOT_TOKEN:-}" ]; then
+    "$LOGGER" -t nut-telegram "BOT_TOKEN no está configurado"
+    exit 1
+fi
+
+if [ -z "$DESTINO" ]; then
+    "$LOGGER" -t nut-telegram "CHAT_ID no está configurado"
+    exit 1
+fi
+
+case "${NOTIFYTYPE:-}" in
+    ONLINE)
+        ICONO="🟢"
+        MENSAJE="Energía restablecida: la UPS $UPS volvió a la alimentación de red"
+        ;;
+    ONBATT)
+        ICONO="🔴"
+        MENSAJE="Corte de energía: la UPS $UPS está funcionando con batería"
+        ;;
+    LOWBATT)
+        ICONO="🪫"
+        MENSAJE="Atención: la batería de la UPS $UPS está baja"
+        ;;
+    COMMOK)
+        ICONO="✅"
+        MENSAJE="Se restableció la comunicación con la UPS $UPS"
+        ;;
+    COMMBAD)
+        ICONO="⚠️"
+        MENSAJE="Se perdió la comunicación con la UPS $UPS"
+        ;;
+    FSD)
+        ICONO="⛔"
+        MENSAJE="Apagado forzado en progreso para la UPS $UPS"
+        ;;
+    SHUTDOWN)
+        ICONO="⛔"
+        MENSAJE="El equipo $EQUIPO iniciará el apagado automático"
+        ;;
+    REPLBATT)
+        ICONO="⚠️"
+        MENSAJE="La batería de la UPS $UPS necesita ser reemplazada"
+        ;;
+    BATTERY)
+        ICONO="🔋"
+        MENSAJE="${1:-Estado periódico de la UPS}"
+        ;;
+    STARTUP)
+        ICONO="🚀"
+        MENSAJE="${1:-El equipo se inició correctamente}"
+        ;;
+    *)
+        ICONO="🔌"
+        MENSAJE="${1:-Evento de UPS sin descripción}"
+        ;;
+esac
+
+TEXTO="$ICONO UPS · $EQUIPO
+$MENSAJE"
+
+"$CURL" \
+    --fail \
+    --silent \
+    --show-error \
+    --max-time 15 \
+    --retry 2 \
+    --data-urlencode "chat_id=$DESTINO" \
+    --data-urlencode "text=$TEXTO" \
+    "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    >/dev/null

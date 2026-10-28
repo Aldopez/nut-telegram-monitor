@@ -1,0 +1,17 @@
+[Unit]
+Description=Send UPS status to Telegram after system startup
+Wants=network-online.target
+After=network-online.target nut-server.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=nut
+Group=nut
+ExecStart=/usr/local/bin/registrar-estado-ups startup
+Restart=on-failure
+RestartSec=60s
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+#!/bin/sh
+
+DIAS="${1:-30}"
+
+case "$DIAS" in
+    ''|*[!0-9]*)
+        printf 'Uso: %s [cantidad-de-dias]\n' "$0" >&2
+        exit 2
+        ;;
+esac
+
+exec /usr/bin/journalctl \
+    -u nut-monitor.service \
+    --since "$DIAS days ago" \
+    --no-pager \
+    --case-sensitive=no \
+    --grep='on battery|on line|back on line|low battery|battery is low|communications|unavailable|shutdown|FSD'
