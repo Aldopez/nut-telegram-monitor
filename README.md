@@ -41,8 +41,7 @@ upsc NOMBRE_UPS@HOST
 | `ups-startup-notify.service` | Informa el arranque y reintenta si no hay conectividad |
 | `ups-status-report.timer` | Ejecuta el registro periódico |
 | `upsmon.conf.snippet` | Directivas que deben integrarse manualmente en `upsmon.conf` |
-| `install.sh` | Instala los archivos sin habilitar servicios ni reemplazar configuraciones
-existentes |
+| `install.sh` | Instala los archivos sin habilitar servicios ni reemplazar configuraciones existentes |
 | `uninstall.sh` | Retira los archivos y preserva la configuración de forma predeterminada |
 
 ## Instalación
@@ -183,6 +182,26 @@ Primero eliminá de `/etc/nut/upsmon.conf` las directivas incorporadas desde
 
 ```bash
 sudo systemctl restart nut-monitor.service
+```
+
+Después ejecutá desde la copia del repositorio:
+
+```bash
+sudo ./uninstall.sh
+```
+
+El desinstalador:
+
+- detiene y deshabilita las unidades del proyecto;
+- elimina scripts, unidades y documentación instalada;
+- no modifica automáticamente `upsmon.conf`;
+- conserva `/etc/nut/telegram.conf`.
+
+Para eliminar también la configuración y el token:
+
+```bash
+sudo env REMOVE_CONFIG=1 ./uninstall.sh
+```
 
 ## Seguridad
 
@@ -217,6 +236,7 @@ Pruebas simuladas, sin UPS ni acceso a Telegram:
 tests/run-tests
 tests/test-install
 tests/test-uninstall
+tests/check-docs
 ```
 
 GitHub Actions ejecuta estas verificaciones en cada `push` y pull request.

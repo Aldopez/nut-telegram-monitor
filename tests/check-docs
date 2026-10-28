@@ -1,0 +1,32 @@
+#!/bin/sh
+
+set -eu
+
+REPO_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+README="$REPO_DIR/README.md"
+
+fail() {
+    printf 'FAIL: %s\n' "$1" >&2
+    exit 1
+}
+
+FENCE_COUNT=$(
+    awk '/^```/ { count++ } END { print count + 0 }' "$README"
+)
+
+[ "$((FENCE_COUNT % 2))" -eq 0 ] ||
+    fail "README.md contiene bloques de código sin cerrar"
+
+awk '
+    /^\|/ && $0 !~ /\|[[:space:]]*$/ {
+        printf "Fila de tabla incompleta en línea %d: %s\n", NR, $0 >"/dev/stderr"
+        invalid = 1
+    }
+
+    END {
+        exit invalid
+    }
+' "$README" ||
+    fail "README.md contiene filas de tabla incompletas"
+
+printf 'ok - estructura básica de README.md\n'

@@ -32,21 +32,26 @@ jobs:
           sh -n tests/test-install
           sh -n uninstall.sh
           sh -n tests/test-uninstall
+          sh -n tests/check-docs
 
       - name: Run ShellCheck
         run: |
           shellcheck \
             install.sh \
+            uninstall.sh \
             bin/eventos-ups \
             bin/notificar-ups-telegram \
             bin/registrar-estado-ups \
             tests/run-tests \
             tests/test-install \
-            uninstall.sh \
-            tests/test-uninstall
+            tests/test-uninstall \
+            tests/check-docs
 
       - name: Run simulated tests
         run: tests/run-tests
+
+      - name: Validate documentation structure
+        run: tests/check-docs
 
       - name: Test isolated installation
         run: tests/test-install
