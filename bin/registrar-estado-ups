@@ -3,8 +3,10 @@
 CONFIG="${NUT_TELEGRAM_CONFIG:-/etc/nut/telegram.conf}"
 NOTIFICADOR="${NUT_TELEGRAM_NOTIFIER:-/usr/local/bin/notificar-ups-telegram}"
 ULTIMO_AVISO="${NUT_TELEGRAM_STATE_FILE:-/run/nut/telegram-battery-last}"
+ESTADO_COMUNICACION="${NUT_TELEGRAM_COMM_STATE_FILE:-/run/nut/telegram-communication-state}"
 UPSC="${NUT_TELEGRAM_UPSC:-/usr/bin/upsc}"
 LOGGER="${NUT_TELEGRAM_LOGGER:-/usr/bin/logger}"
+DATE="${NUT_TELEGRAM_DATE:-/usr/bin/date}"
 
 if [ ! -r "$CONFIG" ]; then
     "$LOGGER" -t ups-history \
@@ -17,6 +19,7 @@ fi
 
 UPS_TARGET="${UPS_TARGET:-ups@127.0.0.1}"
 INTERVALO_AVISO="${INTERVALO_AVISO:-600}"
+RETARDO_COMUNICACION="${RETARDO_COMUNICACION:-600}"
 UPS_MOSTRADA="${NOMBRE_UPS:-$UPS_TARGET}"
 
 case "$INTERVALO_AVISO" in
@@ -27,17 +30,143 @@ case "$INTERVALO_AVISO" in
         ;;
 esac
 
+case "$RETARDO_COMUNICACION" in
+    ''|*[!0-9]*)
+        "$LOGGER" -t ups-history \
+            "error=retardo_comunicacion_invalido valor=$RETARDO_COMUNICACION"
+        exit 1
+        ;;
+esac
+
 if [ ! -x "$NOTIFICADOR" ]; then
     "$LOGGER" -t ups-history \
         "error=notificador_no_ejecutable archivo=$NOTIFICADOR"
     exit 1
 fi
 
-DATOS=$("$UPSC" "$UPS_TARGET" 2>/dev/null) || {
+guardar_estado_comunicacion() {
+    if ! printf '%s %s\n' "$1" "$2" >"$ESTADO_COMUNICACION"; then
+        "$LOGGER" -t ups-history \
+            "error=no_se_pudo_guardar_estado archivo=$ESTADO_COMUNICACION"
+        return 1
+    fi
+}
+
+registrar_fallo_comunicacion() {
+    AHORA=$("$DATE" +%s 2>/dev/null) || {
+        "$LOGGER" -t ups-history \
+            "error=no_se_pudo_obtener_fecha"
+        return 1
+    }
+
+    case "$AHORA" in
+        ''|*[!0-9]*)
+            "$LOGGER" -t ups-history \
+                "error=fecha_invalida valor=$AHORA"
+            return 1
+            ;;
+    esac
+
+    DESDE=
+    AVISADO=
+    ESTADO_NUEVO=0
+
+    if [ -r "$ESTADO_COMUNICACION" ]; then
+        read -r DESDE AVISADO <"$ESTADO_COMUNICACION"
+    else
+        ESTADO_NUEVO=1
+    fi
+
+    case "$DESDE" in
+        ''|*[!0-9]*)
+            ESTADO_NUEVO=1
+            ;;
+    esac
+
+    case "$AVISADO" in
+        0|1)
+            ;;
+        *)
+            ESTADO_NUEVO=1
+            ;;
+    esac
+
+    if [ "$ESTADO_NUEVO" -eq 1 ] ||
+        [ "$AHORA" -lt "$DESDE" ]
+    then
+        DESDE=$AHORA
+        AVISADO=0
+        guardar_estado_comunicacion "$DESDE" "$AVISADO" ||
+            return 1
+    fi
+
+    if [ "$AVISADO" -eq 1 ] ||
+        [ "$((AHORA - DESDE))" -lt "$RETARDO_COMUNICACION" ]
+    then
+        return 0
+    fi
+
+    if NOTIFYTYPE=COMMBAD UPSNAME="$UPS_MOSTRADA" \
+        "$NOTIFICADOR"
+    then
+        guardar_estado_comunicacion "$DESDE" 1 || return 1
+        "$LOGGER" -t ups-history \
+            "comunicacion=perdida aviso=enviado ups=$UPS_TARGET"
+        return 0
+    fi
+
+    "$LOGGER" -t ups-history \
+        "error=no_se_pudo_notificar_comunicacion ups=$UPS_TARGET"
+    return 1
+}
+
+procesar_recuperacion_comunicacion() {
+    [ -e "$ESTADO_COMUNICACION" ] || return 0
+
+    if [ ! -r "$ESTADO_COMUNICACION" ]; then
+        "$LOGGER" -t ups-history \
+            "error=no_se_pudo_leer_estado archivo=$ESTADO_COMUNICACION"
+        return 1
+    fi
+
+    DESDE=
+    AVISADO=
+    read -r DESDE AVISADO <"$ESTADO_COMUNICACION"
+
+    if [ "$AVISADO" = 1 ]; then
+        if ! NOTIFYTYPE=COMMOK UPSNAME="$UPS_MOSTRADA" \
+            "$NOTIFICADOR"
+        then
+            "$LOGGER" -t ups-history \
+                "error=no_se_pudo_notificar_recuperacion ups=$UPS_TARGET"
+            return 1
+        fi
+
+        "$LOGGER" -t ups-history \
+            "comunicacion=recuperada aviso=enviado ups=$UPS_TARGET"
+    else
+        "$LOGGER" -t ups-history \
+            "comunicacion=recuperada aviso=omitido ups=$UPS_TARGET"
+    fi
+
+    /usr/bin/rm -f "$ESTADO_COMUNICACION"
+}
+
+if ! DATOS=$("$UPSC" "$UPS_TARGET" 2>/dev/null); then
     "$LOGGER" -t ups-history \
         "error=no_se_pudo_consultar ups=$UPS_TARGET"
-    exit 1
-}
+
+    if [ "${1:-}" = "startup" ]; then
+        exit 1
+    fi
+
+    registrar_fallo_comunicacion
+    exit $?
+fi
+
+if [ "${1:-}" != "startup" ]; then
+    procesar_recuperacion_comunicacion || true
+fi
 
 ESTADO=$(printf '%s\n' "$DATOS" |
     /usr/bin/awk -F': ' '$1 == "ups.status" {print $2}')

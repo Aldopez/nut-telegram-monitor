@@ -7,7 +7,7 @@ que registra el estado eléctrico y envía alertas mediante un bot de Telegram.
 
 - Aviso inmediato cuando la UPS pasa a batería.
 - Aviso cuando se restablece la alimentación.
-- Alertas de batería baja y pérdida de comunicación.
+
 - Aviso previo al apagado automático.
 - Registro periódico en el journal de systemd.
 - Informes detallados durante cortes prolongados.
@@ -79,6 +79,7 @@ Variables disponibles:
 | `UPS_TARGET` | Identificador aceptado por `upsc`, por ejemplo `ups@127.0.0.1` |
 | `NOMBRE_UPS` | Nombre amigable opcional mostrado en los mensajes |
 | `INTERVALO_AVISO` | Segundos entre informes detallados mientras continúa en batería |
+| `RETARDO_COMUNICACION` | Segundos que debe persistir un fallo de comunicación antes de enviar una alerta |
 
 La configuración debe permanecer con propietario `root:nut` y modo `0640`.
 
@@ -108,6 +109,16 @@ No reemplaces el archivo completo: contiene la definición `MONITOR` y parámetr
 propios de cada instalación.
 
 Después de revisar los cambios:
+
+Los eventos `COMMBAD` y `COMMOK` se conservan únicamente en el registro de
+`upsmon`. Las notificaciones de Telegram para esos eventos son gestionadas por
+`registrar-estado-ups`: una interrupción transitoria se omite y solamente se
+avisa cuando el fallo persiste durante `RETARDO_COMUNICACION` segundos. El valor
+predeterminado es 600 segundos.
+
+La recuperación genera una notificación únicamente si previamente se envió la
+alerta de pérdida de comunicación. Como la comprobación se ejecuta una vez por
+minuto, el aviso se produce en la primera ejecución posterior al retardo.
 
 ```bash
 sudo systemctl restart nut-monitor.service

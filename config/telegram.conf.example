@@ -17,3 +17,6 @@ NOMBRE_UPS=""
 
 # Seconds between detailed reports while the UPS remains on battery.
 INTERVALO_AVISO=600
+
+# Seconds a communication failure must persist before sending an alert.
+RETARDO_COMUNICACION=600
