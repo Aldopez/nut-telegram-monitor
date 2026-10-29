@@ -31,6 +31,7 @@ NOMBRE_EQUIPO="Servidor de prueba"
 UPS_TARGET="demo@127.0.0.1"
 NOMBRE_UPS="UPS de prueba"
 INTERVALO_AVISO=0
+RETARDO_COMUNICACION=600
 EOF
 
 cat >"$TEST_DIR/fake-logger" <<'EOF'
@@ -47,12 +48,20 @@ cat >"$TEST_DIR/fake-upsc" <<'EOF'
 #!/bin/sh
 
 [ "$1" = "demo@127.0.0.1" ] || exit 9
+[ "${FAKE_UPS_FAIL:-0}" = 0 ] || exit 1
 
 printf '%s\n' \
     "ups.status: ${FAKE_UPS_STATUS:-OB}" \
     "battery.charge: 87" \
     "battery.runtime: 3600" \
     "ups.load: 12"
+EOF
+
+cat >"$TEST_DIR/fake-date" <<'EOF'
+#!/bin/sh
+
+[ "${1:-}" = "+%s" ] || exit 9
+printf '%s\n' "${FAKE_NOW:?}"
 EOF
 
 cat >"$TEST_DIR/fake-notifier" <<'EOF'
@@ -69,6 +78,7 @@ chmod 755 \
     "$TEST_DIR/fake-logger" \
     "$TEST_DIR/fake-curl" \
     "$TEST_DIR/fake-upsc" \
+    "$TEST_DIR/fake-date" \
     "$TEST_DIR/fake-notifier"
 
 CURL_CAPTURE="$TEST_DIR/curl.args"
@@ -76,6 +86,22 @@ LOGGER_CAPTURE="$TEST_DIR/logger.out"
 NOTIFY_CAPTURE="$TEST_DIR/notifier.out"
 
 export CURL_CAPTURE LOGGER_CAPTURE NOTIFY_CAPTURE
+
+COMM_STATE="$TEST_DIR/communication-state"
+
+run_registrar_at() {
+    FAKE_UPS_FAIL="$1" \
+    FAKE_NOW="$2" \
+    FAKE_UPS_STATUS="$3" \
+    NUT_TELEGRAM_CONFIG="$TEST_DIR/telegram.conf" \
+    NUT_TELEGRAM_NOTIFIER="$TEST_DIR/fake-notifier" \
+    NUT_TELEGRAM_STATE_FILE="$TEST_DIR/battery-last" \
+    NUT_TELEGRAM_COMM_STATE_FILE="$COMM_STATE" \
+    NUT_TELEGRAM_UPSC="$TEST_DIR/fake-upsc" \
+    NUT_TELEGRAM_LOGGER="$TEST_DIR/fake-logger" \
+    NUT_TELEGRAM_DATE="$TEST_DIR/fake-date" \
+        "$REPO_DIR/bin/registrar-estado-ups"
+}
 
 NUT_TELEGRAM_CONFIG="$TEST_DIR/telegram.conf" \
 NUT_TELEGRAM_CURL="$TEST_DIR/fake-curl" \
@@ -133,4 +159,53 @@ assert_contains "$NOTIFY_CAPTURE" "NOTIFYTYPE=STARTUP"
 assert_contains "$NOTIFY_CAPTURE" "El equipo se inició correctamente"
 
 printf 'ok - notificación de arranque\n'
+rm -f "$NOTIFY_CAPTURE" "$COMM_STATE"
+
+run_registrar_at 1 1000 OL
+
+assert_contains "$COMM_STATE" "1000 0"
+
+[ ! -e "$NOTIFY_CAPTURE" ] ||
+    fail "se notificó una pérdida de comunicación inmediatamente"
+
+run_registrar_at 0 1100 OL
+
+[ ! -e "$COMM_STATE" ] ||
+    fail "no se limpió el fallo transitorio de comunicación"
+
+[ ! -e "$NOTIFY_CAPTURE" ] ||
+    fail "se notificó la recuperación de un fallo transitorio"
+
+printf 'ok - omisión de fallo transitorio de comunicación\n'
+
+run_registrar_at 1 2000 OL
+run_registrar_at 1 2599 OL
+
+[ ! -e "$NOTIFY_CAPTURE" ] ||
+    fail "se notificó antes de cumplir el retardo"
+
+run_registrar_at 1 2600 OL
+
+assert_contains "$NOTIFY_CAPTURE" "NOTIFYTYPE=COMMBAD"
+assert_contains "$COMM_STATE" "2000 1"
+
+printf 'ok - alerta de pérdida prolongada de comunicación\n'
+
+rm -f "$NOTIFY_CAPTURE"
+
+run_registrar_at 1 3000 OL
+
+[ ! -e "$NOTIFY_CAPTURE" ] ||
+    fail "se repitió la alerta durante la misma pérdida de comunicación"
+
+printf 'ok - ausencia de alertas de comunicación duplicadas\n'
+
+run_registrar_at 0 3100 OL
+
+assert_contains "$NOTIFY_CAPTURE" "NOTIFYTYPE=COMMOK"
+
+[ ! -e "$COMM_STATE" ] ||
+    fail "no se limpió el estado después de recuperar la comunicación"
+
+printf 'ok - aviso de recuperación de comunicación\n'
 printf 'Todas las pruebas finalizaron correctamente.\n'
